@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Email config — set via environment variables for security
 SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT     = int(os.getenv("SMTP_PORT", 587))
+SMTP_PORT = int(os.getenv("SMTP_PORT", 465))
 SMTP_USER     = os.getenv("SMTP_USER", "your_email@gmail.com")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "your_app_password")
 FROM_NAME     = os.getenv("FROM_NAME", "SimplifiIQ Team")
@@ -90,9 +90,7 @@ This report was automatically generated as part of our lead onboarding process.
         )
         msg.attach(part)
 
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.ehlo()
-            server.starttls()
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.sendmail(SMTP_USER, to_email, msg.as_string())
 
