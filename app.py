@@ -33,6 +33,7 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "your_app_password")
 FROM_NAME     = os.getenv("FROM_NAME", "SimplifiIQ Team")
 
 REPORTS_DIR = os.path.join(os.path.dirname(__file__), "reports")
+os.makedirs(REPORTS_DIR, exist_ok=True)
 LEADS_FILE  = os.path.join(os.path.dirname(__file__), "leads.json")
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
