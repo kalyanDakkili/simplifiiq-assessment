@@ -1,0 +1,90 @@
+SIMPLIFIIQ TECHNICAL ASSESSMENT — REFLECTION
+Author: Dakkili Kalyan
+Role: AI Software Developer Intern
+
+═══════════════════════════════════════════════════
+
+1. APPROACH & THOUGHT PROCESS
+───────────────────────────────
+My first step was to break the problem into 4 independent
+modules: form capture, data enrichment, PDF generation,
+and email delivery. I built and tested each module
+separately before connecting them into one pipeline.
+
+I chose Flask for the backend because it is lightweight
+and quick to set up for a prototype. For enrichment I
+deliberately avoided paid APIs — instead using DuckDuckGo
+HTML scraping and BeautifulSoup to extract company data
+from their own website, LinkedIn presence, and news
+headlines. This keeps the system free to run for anyone.
+
+2. TECHNICAL DECISIONS & TRADE-OFFS
+─────────────────────────────────────
+- DuckDuckGo HTML scraping over SerpAPI/Google API
+  → Free, no key needed, sufficient data for enrichment
+
+- ReportLab over WeasyPrint for PDF
+  → Pure Python, no system-level dependencies, easier
+    to run cross-platform on Windows/Mac/Linux
+
+- Background threading over Celery/Redis
+  → Zero infrastructure overhead for a prototype;
+    form responds instantly while processing continues
+
+- smtplib over SendGrid/Mailgun
+  → Works with any Gmail account, no third-party
+    account or billing needed
+
+- JSON file over PostgreSQL/SQLite
+  → Simple, zero-dependency lead storage for a prototype;
+    production would use a proper database
+
+3. WHAT WORKS
+──────────────
+- End-to-end pipeline fully functional and tested locally
+- Form submission → enrichment → PDF → email in ~8 seconds
+- Graceful fallbacks at every stage (scraping fail,
+  missing data, email fail — system never crashes)
+- Professional 4-page PDF with 7 sections per prospect
+- Internal dashboard at /leads to track all submissions
+
+4. CHALLENGES FACED
+────────────────────
+- DuckDuckGo occasionally rate-limits scraping requests.
+  Solved with time.sleep() delays between requests and
+  graceful fallback to static industry insights.
+
+- ReportLab's table layout required careful column width
+  calculations for the PDF to look professional across
+  different company name lengths.
+
+- Gmail SMTP requires App Passwords (not regular password)
+  due to Google's security policies. Documented this
+  clearly in the README.
+
+5. IF I HAD MORE TIME
+──────────────────────
+- Add Google Sheets logging via gspread (architecture
+  already documented in README)
+- Add Google Drive PDF archiving
+- Deploy to Railway or Render for a live public URL
+- Use a proper task queue (Celery + Redis) instead of
+  threading for production reliability
+- Add a proper database (SQLite or PostgreSQL)
+- Improve PDF personalisation with Claude/Gemini API
+  for AI-generated insight paragraphs
+
+6. WHAT I LEARNED
+──────────────────
+This project pushed me to think about system design
+holistically — not just writing code but handling
+failures, user experience (instant form response),
+and professional output quality (the PDF report).
+
+Building without paid APIs forced creative solutions
+and a deeper understanding of web scraping, HTTP,
+and email protocols.
+
+═══════════════════════════════════════════════════
+GitHub: https://github.com/kalyanDakkili/simplifiiq-assessment
+Email:  kalyandakkili77@gmail.com
