@@ -51,51 +51,49 @@ def save_lead(lead: dict):
         json.dump(leads, f, indent=2)
 
 def send_report_email(to_email: str, to_name: str, company: str, pdf_path: str):
-    """Send the generated PDF report to the prospect via SMTP."""
+    """Send report via Brevo HTTP API — works on all hosting platforms."""
     try:
-        msg = MIMEMultipart()
-        msg["From"]    = f"{FROM_NAME} <{SMTP_USER}>"
-        msg["To"]      = to_email
-        msg["Subject"] = f"Your Personalised Business Audit — {company}"
+        import base64
+        with open(pdf_path, "rb") as f:
+            pdf_b64 = base64.b64encode(f.read()).decode()
 
-        body = f"""
-Dear {to_name},
+        payload = {
+            "sender": {"name": FROM_NAME, "email": SMTP_USER},
+            "to": [{"email": to_email, "name": to_name}],
+            "subject": f"Your Personalised Business Audit — {company}",
+            "textContent": f"""Dear {to_name},
 
 Thank you for your interest in SimplifiIQ.
 
-We've prepared a personalised business audit report for {company} based on publicly available information. This report highlights key insights, potential inefficiencies, and areas where AI-driven automation could create measurable value for your organisation.
+We've prepared a personalised business audit report for {company} based on publicly available information.
 
 Please find your tailored report attached.
 
-We'd love to connect and walk you through our findings. Feel free to reply to this email or book a quick call at your convenience.
-
 Warm regards,
-SimplifiIQ Recruitment / Outreach Team
-career@simplifiiq.com | simplifiiq.com
+SimplifiIQ Team
+career@simplifiiq.com | simplifiiq.com""",
+            "attachment": [{
+                "content": pdf_b64,
+                "name": f"{company}_Audit_Report.pdf"
+            }]
+        }
 
----
-This report was automatically generated as part of our lead onboarding process.
-        """.strip()
-
-        msg.attach(MIMEText(body, "plain"))
-
-        # Attach PDF
-        with open(pdf_path, "rb") as f:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(f.read())
-        encoders.encode_base64(part)
-        part.add_header(
-            "Content-Disposition",
-            f'attachment; filename="{company}_Audit_Report.pdf"'
+        resp = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": SMTP_PASSWORD,
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=30
         )
-        msg.attach(part)
 
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(SMTP_USER, to_email, msg.as_string())
-
-        logger.info(f"✅ Email sent to {to_email}")
-        return True
+        if resp.status_code == 201:
+            logger.info(f"✅ Email sent to {to_email}")
+            return True
+        else:
+            logger.error(f"❌ Email send failed: {resp.status_code} {resp.text}")
+            return False
 
     except Exception as e:
         logger.error(f"❌ Email send failed: {e}")
