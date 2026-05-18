@@ -2,7 +2,8 @@
 
 > **Author:** Kalyan Dakkili  
 > **Role Applied:** AI Software Developer Intern  
-> **Assessment:** SimplifiIQ Technical Evaluation
+> **Assessment:** SimplifiIQ Technical Evaluation  
+> **Live Demo:** https://simplifiiq-assessment.onrender.com
 
 ---
 
@@ -13,10 +14,17 @@ An end-to-end automated lead intake system that:
 1. **Captures** prospect information via a professional web form
 2. **Enriches** company data using free web scraping (no paid APIs)
 3. **Generates** a personalised PDF audit report per prospect
-4. **Emails** the report automatically — all within minutes of form submission
-5. **Logs** every lead to a local JSON tracker (bonus: swap for Google Sheets)
+4. **Emails** the report automatically via Brevo API — within minutes of form submission
+5. **Logs** every lead to a local JSON tracker
 
-**Zero paid API keys required.**
+**Zero paid API keys required for core functionality.**
+
+---
+
+## 🌐 Live Demo
+
+**Form:** https://simplifiiq-assessment.onrender.com  
+**Dashboard:** https://simplifiiq-assessment.onrender.com/leads
 
 ---
 
@@ -30,25 +38,25 @@ Flask App (app.py)
      │
      ├─► Validation
      │
-     └─► Background Thread ──────────────────────────────┐
-              │                                           │
-              ▼                                           │
-       enrichment.py                                      │
-       ├── Scrape company website (BeautifulSoup)         │
-       ├── DuckDuckGo HTML search (no API key)            │
-       ├── Extract LinkedIn / social presence             │
-       ├── Fetch recent news headlines                    │
-       └── Map industry → insights (static knowledge)    │
-              │                                           │
-              ▼                                           │
-       report_generator.py                               │
-       └── ReportLab PDF: cover + 7 sections             │
-              │                                           │
-              ▼                                           │
-       smtplib → Send PDF via email                      │
-              │                                           │
-              ▼                                           │
-       leads.json (local lead tracker) ◄─────────────────┘
+     └─► Background Thread
+              │
+              ▼
+       enrichment.py
+       ├── Scrape company website (BeautifulSoup)
+       ├── DuckDuckGo HTML search (no API key)
+       ├── Extract LinkedIn / social presence
+       ├── Fetch recent news headlines
+       └── Map industry → insights (static knowledge)
+              │
+              ▼
+       report_generator.py
+       └── ReportLab PDF: cover + 7 sections
+              │
+              ▼
+       Brevo HTTP API → Send PDF via email
+              │
+              ▼
+       leads.json (local lead tracker)
 ```
 
 ---
@@ -61,6 +69,7 @@ simplifiiq/
 ├── enrichment.py           # Web scraping + company intelligence
 ├── report_generator.py     # ReportLab PDF generation
 ├── requirements.txt        # Python dependencies
+├── reflection.txt          # Technical decisions & trade-offs
 ├── leads.json              # Auto-created lead log
 ├── reports/                # Auto-created PDF output directory
 └── templates/
@@ -70,57 +79,52 @@ simplifiiq/
 
 ---
 
-## ⚙️ Setup & Running
+## ⚙️ Setup & Running Locally
 
 ### 1. Clone / Download
-
 ```bash
-cd simplifiiq/
+git clone https://github.com/kalyanDakkili/simplifiiq-assessment.git
+cd simplifiiq-assessment
 ```
 
 ### 2. Install dependencies
-
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Configure email (for sending reports)
+### 3. Configure email
 
-Set environment variables — **never hardcode credentials**:
+Get a free Brevo API key at [brevo.com](https://brevo.com) → SMTP & API → API Keys
 
+Set environment variables:
 ```bash
-# Gmail recommended (use an App Password, not your main password)
-export SMTP_HOST="smtp.gmail.com"
-export SMTP_PORT="587"
+# Windows CMD
+set SMTP_USER=your_email@gmail.com
+set SMTP_PASSWORD=xkeysib-your-brevo-api-key
+set FROM_NAME=SimplifiIQ Team
+
+# Mac/Linux
 export SMTP_USER="your_email@gmail.com"
-export SMTP_PASSWORD="your_16_char_app_password"
+export SMTP_PASSWORD="xkeysib-your-brevo-api-key"
 export FROM_NAME="SimplifiIQ Team"
 ```
 
-**How to get a Gmail App Password:**
-1. Go to myaccount.google.com → Security → 2-Step Verification → App Passwords
-2. Generate one for "Mail" → use that 16-character code as `SMTP_PASSWORD`
-
-> Any SMTP provider works: Outlook, Yahoo, or a free tier of Mailtrap (for testing).
-
 ### 4. Run the server
-
 ```bash
 python app.py
 ```
 
-Visit: [http://localhost:5000](http://localhost:5000)  
-Dashboard: [http://localhost:5000/leads](http://localhost:5000/leads)
+Visit: http://localhost:5000  
+Dashboard: http://localhost:5000/leads
 
 ---
 
 ## 🧪 Testing Without Email
 
-If you just want to test PDF generation without sending emails, you can call the pipeline directly:
-
 ```python
 from enrichment import enrich_company
 from report_generator import generate_pdf_report
+import os; os.makedirs('reports', exist_ok=True)
 
 lead = {
     "name": "Jane Smith",
@@ -175,16 +179,13 @@ print("PDF created!")
 | ReportLab (not WeasyPrint) | Pure Python, no system dependencies, lighter |
 | Static industry insights | Reliable fallback when scraping returns nothing |
 | JSON lead log | Simple, zero-dependency storage; swap for DB or Sheets |
-| SMTP via smtplib | Works with any email provider, no third-party SDK |
+| Brevo HTTP API for email | Works on all hosting platforms including Render free tier |
 
 ---
 
 ## 🎁 BONUS Features
 
 ### Google Sheets Logging (architecture)
-
-To add Sheets logging, install `gspread` and replace `save_lead()` in `app.py`:
-
 ```python
 import gspread
 from google.oauth2.service_account import Credentials
@@ -202,7 +203,6 @@ def save_lead(lead):
 ```
 
 ### Google Drive PDF Archiving (architecture)
-
 ```python
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -220,11 +220,11 @@ def archive_to_drive(pdf_path, company):
 
 ## 🛡️ Error Handling
 
-- **Missing lead fields:** 400 response with clear error message
-- **Website scrape failure:** Falls back to DuckDuckGo search result
-- **DuckDuckGo unavailable:** Industry insights and defaults used
-- **PDF generation failure:** Logged; no crash
-- **Email send failure:** Status saved as `email_failed`; lead still stored
+- Missing lead fields: 400 response with clear error message
+- Website scrape failure: Falls back to DuckDuckGo search result
+- DuckDuckGo unavailable: Industry insights and defaults used
+- PDF generation failure: Logged; no crash
+- Email send failure: Status saved as `email_failed`; lead still stored
 
 ---
 
@@ -232,5 +232,5 @@ def archive_to_drive(pdf_path, company):
 
 **Kalyan Dakkili**  
 B.Tech Computer Science (2025), Bangalore  
-GitHub: [github.com/kalyan-dakkili](https://github.com)  
-Email: dakkili.kalyan@email.com
+GitHub: [kalyanDakkili](https://github.com/kalyanDakkili)  
+Email: kalyandakkili77@gmail.com
