@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SimplifiIQ — Leads Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Plus Jakarta Sans', sans-serif; background: #0A1628; color: #fff; min-height: 100vh; }
+  .header { background: rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 1rem 2rem; display: flex; align-items: center; gap: 12px; }
+  .logo { font-family: 'Space Grotesk', sans-serif; font-size: 1.1rem; font-weight: 700; color: #00C2FF; }
+  .tag { background: #1A56DB; border-radius: 6px; padding: 2px 10px; font-size: 0.75rem; font-weight: 600; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+  h2 { font-family: 'Space Grotesk', sans-serif; font-size: 1.5rem; margin-bottom: 1.5rem; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .stat { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1.2rem; }
+  .stat-val { font-family: 'Space Grotesk', sans-serif; font-size: 2rem; font-weight: 700; color: #00C2FF; }
+  .stat-label { font-size: 0.8rem; color: rgba(255,255,255,0.5); margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: rgba(26,86,219,0.2); padding: 10px 14px; text-align: left; font-size: 0.8rem; font-weight: 600; color: rgba(255,255,255,0.6); border-bottom: 1px solid rgba(255,255,255,0.08); }
+  tbody tr { border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s; }
+  tbody tr:hover { background: rgba(255,255,255,0.04); }
+  td { padding: 10px 14px; font-size: 0.87rem; color: rgba(255,255,255,0.8); }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+  .badge-green  { background: rgba(16,185,129,0.15); color: #6EE7B7; }
+  .badge-blue   { background: rgba(26,86,219,0.2);   color: #93C5FD; }
+  .badge-orange { background: rgba(245,158,11,0.15); color: #FCD34D; }
+  .badge-red    { background: rgba(239,68,68,0.15);  color: #FCA5A5; }
+  .empty { text-align: center; padding: 3rem; color: rgba(255,255,255,0.3); }
+</style>
+</head>
+<body>
+<div class="header">
+  <span class="logo">SimplifiIQ</span>
+  <span class="tag">Leads Dashboard</span>
+</div>
+<div class="container">
+  <h2>📊 Lead Tracker</h2>
+
+  {% set total = leads | length %}
+  {% set sent  = leads | selectattr('status', 'equalto', 'email_sent')      | list | length %}
+  {% set gen   = leads | selectattr('status', 'equalto', 'report_generated')| list | length %}
+  {% set fail  = leads | selectattr('status', 'equalto', 'email_failed')     | list | length %}
+
+  <div class="stats">
+    <div class="stat"><div class="stat-val">{{ total }}</div><div class="stat-label">Total Leads</div></div>
+    <div class="stat"><div class="stat-val" style="color:#10B981">{{ sent }}</div><div class="stat-label">Reports Delivered</div></div>
+    <div class="stat"><div class="stat-val" style="color:#F59E0B">{{ gen }}</div><div class="stat-label">Pending Send</div></div>
+    <div class="stat"><div class="stat-val" style="color:#EF4444">{{ fail }}</div><div class="stat-label">Failed</div></div>
+  </div>
+
+  {% if leads %}
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Name</th><th>Email</th><th>Company</th>
+        <th>Industry</th><th>Submitted</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for lead in leads | reverse %}
+    <tr>
+      <td style="color:rgba(255,255,255,0.3)">{{ loop.index }}</td>
+      <td>{{ lead.name }}</td>
+      <td>{{ lead.email }}</td>
+      <td><strong>{{ lead.company }}</strong></td>
+      <td>{{ lead.industry or '—' }}</td>
+      <td style="color:rgba(255,255,255,0.45); font-size:0.78rem">{{ lead.submitted_at[:16] if lead.submitted_at else '—' }}</td>
+      <td>
+        {% if lead.status == 'email_sent' %}
+          <span class="badge badge-green">✓ Delivered</span>
+        {% elif lead.status == 'report_generated' %}
+          <span class="badge badge-blue">📄 Report Ready</span>
+        {% elif lead.status == 'enriched' %}
+          <span class="badge badge-orange">🔍 Enriching</span>
+        {% elif lead.status == 'email_failed' %}
+          <span class="badge badge-red">✗ Email Failed</span>
+        {% else %}
+          <span class="badge badge-orange">⏳ {{ lead.status }}</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    <div style="font-size:2.5rem; margin-bottom: 0.5rem">📭</div>
+    <div>No leads yet. Submit the form to see them here.</div>
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>
