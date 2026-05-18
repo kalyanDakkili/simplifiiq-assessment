@@ -21,7 +21,7 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-TIMEOUT = 10
+TIMEOUT = 5
 
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
