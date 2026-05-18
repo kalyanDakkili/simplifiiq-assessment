@@ -9,6 +9,7 @@ import json
 import smtplib
 import threading
 import logging
+import base64
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -26,10 +27,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 # Email config — set via environment variables for security
-SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 SMTP_USER     = os.getenv("SMTP_USER", "your_email@gmail.com")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "your_app_password")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "your_brevo_api_key")
 FROM_NAME     = os.getenv("FROM_NAME", "SimplifiIQ Team")
 
 REPORTS_DIR = os.path.join(os.path.dirname(__file__), "reports")
@@ -51,13 +50,17 @@ def save_lead(lead: dict):
         json.dump(leads, f, indent=2)
 
 def send_report_email(to_email: str, to_name: str, company: str, pdf_path: str):
-    """Send report via Brevo HTTP API — works on all hosting platforms."""
+    """Send report via Brevo HTTP API using only stdlib — works on all hosting platforms."""
     try:
-        import base64
+        import json as _json
+        import urllib.request as _urllib
+
+        # Read and encode PDF
         with open(pdf_path, "rb") as f:
             pdf_b64 = base64.b64encode(f.read()).decode()
 
-        payload = {
+        # Build payload
+        payload = _json.dumps({
             "sender": {"name": FROM_NAME, "email": SMTP_USER},
             "to": [{"email": to_email, "name": to_name}],
             "subject": f"Your Personalised Business Audit — {company}",
@@ -65,35 +68,45 @@ def send_report_email(to_email: str, to_name: str, company: str, pdf_path: str):
 
 Thank you for your interest in SimplifiIQ.
 
-We've prepared a personalised business audit report for {company} based on publicly available information.
+We've prepared a personalised business audit report for {company} based on publicly available information. This report highlights key insights, potential inefficiencies, and areas where AI-driven automation could create measurable value for your organisation.
 
 Please find your tailored report attached.
 
+We'd love to connect and walk you through our findings. Feel free to reply to this email or book a quick call at your convenience.
+
 Warm regards,
-SimplifiIQ Team
-career@simplifiiq.com | simplifiiq.com""",
+SimplifiIQ Recruitment / Outreach Team
+career@simplifiiq.com | simplifiiq.com
+
+---
+This report was automatically generated as part of our lead onboarding process.""",
             "attachment": [{
                 "content": pdf_b64,
                 "name": f"{company}_Audit_Report.pdf"
             }]
-        }
+        }).encode("utf-8")
 
-        resp = requests.post(
+        # Use stdlib urllib — no naming conflict with Flask's request
+        req = _urllib.Request(
             "https://api.brevo.com/v3/smtp/email",
+            data=payload,
             headers={
                 "api-key": SMTP_PASSWORD,
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Accept": "application/json",
             },
-            json=payload,
-            timeout=30
+            method="POST"
         )
 
-        if resp.status_code == 201:
-            logger.info(f"✅ Email sent to {to_email}")
-            return True
-        else:
-            logger.error(f"❌ Email send failed: {resp.status_code} {resp.text}")
-            return False
+        with _urllib.urlopen(req, timeout=30) as resp:
+            status = resp.status
+            if status == 201:
+                logger.info(f"✅ Email sent to {to_email}")
+                return True
+            else:
+                body = resp.read().decode()
+                logger.error(f"❌ Email send failed: {status} {body}")
+                return False
 
     except Exception as e:
         logger.error(f"❌ Email send failed: {e}")
