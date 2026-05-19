@@ -14,8 +14,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY, TA_RIGHT
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable, PageBreak, KeepTogether
+    HRFlowable, PageBreak, KeepTogether, BaseDocTemplate, Frame, PageTemplate
 )
+from reportlab.pdfgen import canvas as pdfcanvas
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +49,8 @@ def styles():
                                textColor=TEXT, leading=15, spaceAfter=5,
                                alignment=TA_JUSTIFY),
         "body_white": ParagraphStyle("body_white", fontName="Helvetica", fontSize=9.5,
-                                     textColor=WHITE, leading=15, spaceAfter=5,
-                                     alignment=TA_JUSTIFY),
+                                     textColor=WHITE, leading=15, spaceAfter=0,
+                                     alignment=TA_LEFT),
         "small": ParagraphStyle("small", fontName="Helvetica", fontSize=8.5,
                                 textColor=GRAY, leading=13, spaceAfter=3),
         "small_bold": ParagraphStyle("small_bold", fontName="Helvetica-Bold", fontSize=8.5,
@@ -57,14 +58,13 @@ def styles():
         "bullet": ParagraphStyle("bullet", fontName="Helvetica", fontSize=9.5,
                                  textColor=TEXT, leading=15, leftIndent=12, spaceAfter=4),
         "cover_tag": ParagraphStyle("cover_tag", fontName="Helvetica-Bold", fontSize=8,
-                                    textColor=ACCENT, leading=12, spaceAfter=8,
-                                    letterSpacing=1.5),
+                                    textColor=ACCENT, leading=12, spaceAfter=8),
         "cover_company": ParagraphStyle("cover_company", fontName="Helvetica-Bold",
                                         fontSize=30, textColor=WHITE, leading=36, spaceAfter=6),
         "cover_sub": ParagraphStyle("cover_sub", fontName="Helvetica", fontSize=12,
                                     textColor=ACCENT, leading=18, spaceAfter=4),
-        "cover_meta": ParagraphStyle("cover_meta", fontName="Helvetica", fontSize=9,
-                                     textColor=colors.HexColor("#94A3B8"), leading=14),
+        "cover_meta": ParagraphStyle("cover_meta", fontName="Helvetica", fontSize=10,
+                                     textColor=colors.HexColor("#94A3B8"), leading=16),
         "tag_white": ParagraphStyle("tag_white", fontName="Helvetica-Bold", fontSize=8,
                                     textColor=WHITE, leading=12),
         "center": ParagraphStyle("center", fontName="Helvetica", fontSize=9.5,
@@ -88,49 +88,137 @@ def styles():
     }
 
 
-# ── Cover Page ─────────────────────────────────────────────────────────────────
-def build_cover(story, lead, enriched, S):
+# ── Cover Page (drawn directly on canvas for full bleed) ──────────────────────
+def draw_cover(c, lead, enriched):
+    """Draw the entire cover page using canvas for pixel-perfect full-bleed design."""
     company  = lead["company"]
     industry = enriched.get("industry") or lead.get("industry") or "Technology"
     desc     = enriched.get("description", "")
-    date     = datetime.utcnow().strftime("%B %d, %Y")
+    date     = datetime.now().strftime("%B %d, %Y")
+    name     = lead["name"]
 
-    # Full-width dark cover block
-    cover_rows = [
-        [Paragraph("SimplifiIQ", ParagraphStyle("logo", fontName="Helvetica-Bold",
-                   fontSize=12, textColor=ACCENT, leading=16))],
-        [Spacer(1, 24)],
-        [Paragraph("BUSINESS AUDIT REPORT", S["cover_tag"])],
-        [Paragraph(company, S["cover_company"])],
-        [Paragraph(f"Industry: {industry}", S["cover_sub"])],
-        [Spacer(1, 12)],
-        [Paragraph(
-            desc[:220] + ("..." if len(desc) > 220 else "") if desc else
-            f"{company} operates in the {industry} sector. This report provides an "
-            "AI-powered analysis of their digital presence, industry positioning, and "
-            "automation opportunities.",
-            ParagraphStyle("cover_desc", fontName="Helvetica", fontSize=10,
-                           textColor=colors.HexColor("#CBD5E1"), leading=16)
-        )],
-        [Spacer(1, 36)],
-        [HRFlowable(width=180, thickness=1, color=BLUE)],
-        [Spacer(1, 12)],
-        [Paragraph(f"<b>Prepared for:</b> {lead['name']}", S["cover_meta"])],
-        [Paragraph(f"<b>Date:</b> {date}", S["cover_meta"])],
-        [Paragraph("<b>Prepared by:</b> SimplifiIQ Research Engine", S["cover_meta"])],
-        [Spacer(1, 8)],
+    # ── 1. BACKGROUND (draw first — bottom layer) ─────────────────────────────
+    c.setFillColor(NAVY)
+    c.rect(0, 0, W, H, fill=1, stroke=0)
+
+    # Subtle decorative circles — drawn BEFORE text so text sits on top
+    c.setFillColor(colors.HexColor("#0D1F38"))
+    c.circle(W - 0.5*cm, H - 3.5*cm, 4.5*cm, fill=1, stroke=0)
+    c.circle(W + 0.8*cm, H - 1.5*cm, 3*cm,   fill=1, stroke=0)
+    c.circle(1*cm,       3*cm,        5*cm,   fill=1, stroke=0)
+
+    # Left accent bar
+    c.setFillColor(ACCENT)
+    c.rect(0, 0, 0.5*cm, H, fill=1, stroke=0)
+
+    # ── 2. TOP BAR ────────────────────────────────────────────────────────────
+    c.setFillColor(BLUE)
+    c.rect(0, H - 1.4*cm, W, 1.4*cm, fill=1, stroke=0)
+
+    c.setFillColor(WHITE)
+    c.setFont("Helvetica-Bold", 13)
+    c.drawString(1.2*cm, H - 0.92*cm, "SimplifiIQ")
+
+    c.setFillColor(colors.HexColor("#E0F0FF"))
+    c.setFont("Helvetica", 9)
+    c.drawRightString(W - 1.4*cm, H - 0.92*cm, "AI-Powered Business Intelligence")
+
+    # Thin accent line under top bar
+    c.setStrokeColor(ACCENT)
+    c.setLineWidth(1.5)
+    c.line(1.2*cm, H - 1.75*cm, W - 1.4*cm, H - 1.75*cm)
+
+    # ── 3. HERO TEXT BLOCK ────────────────────────────────────────────────────
+    tag_y = H - 3.0*cm
+    c.setFillColor(ACCENT)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(1.8*cm, tag_y, "BUSINESS AUDIT REPORT")
+
+    # Company name — pure white, large and bold
+    company_y = tag_y - 1.1*cm
+    font_size = 36
+    if c.stringWidth(company, "Helvetica-Bold", font_size) > (W - 4*cm):
+        font_size = 26
+    c.setFillColor(WHITE)
+    c.setFont("Helvetica-Bold", font_size)
+    c.drawString(1.8*cm, company_y, company)
+
+    # Industry label — bright accent colour
+    c.setFillColor(ACCENT)
+    c.setFont("Helvetica", 13)
+    c.drawString(1.8*cm, company_y - 0.75*cm, f"Industry: {industry}")
+
+    # Short divider line
+    div_y = company_y - 1.4*cm
+    c.setStrokeColor(BLUE)
+    c.setLineWidth(1.2)
+    c.line(1.8*cm, div_y, 9*cm, div_y)
+
+    # Description — white text, slightly smaller, well-spaced
+    desc_text = (desc[:320] + ("..." if len(desc) > 320 else "")) if desc else (
+        f"{company} operates in the {industry} sector. This report provides an "
+        "AI-powered analysis of their digital presence, industry positioning, and "
+        "automation opportunities identified by the SimplifiIQ Research Engine."
+    )
+    desc_y   = div_y - 0.65*cm
+    max_line = W - 4.2*cm   # leave margin on both sides
+    c.setFillColor(WHITE)   # bright white — clearly readable on dark background
+    c.setFont("Helvetica", 10.5)
+    words, line, lines = desc_text.split(), "", []
+    for word in words:
+        test = (line + " " + word).strip()
+        if c.stringWidth(test, "Helvetica", 10.5) < max_line:
+            line = test
+        else:
+            lines.append(line)
+            line = word
+    if line:
+        lines.append(line)
+    for i, ln in enumerate(lines[:7]):
+        c.drawString(1.8*cm, desc_y - i * 0.5*cm, ln)
+
+    # ── 4. META INFO BOX ──────────────────────────────────────────────────────
+    meta_box_y = 5.8*cm
+    meta_box_h = 4.0*cm
+    meta_box_x = 1.8*cm
+    meta_box_w = W - 3.6*cm
+
+    # Dark card
+    c.setFillColor(colors.HexColor("#0B1E38"))
+    c.roundRect(meta_box_x, meta_box_y, meta_box_w, meta_box_h, 8, fill=1, stroke=0)
+
+    # Accent left stripe
+    c.setFillColor(ACCENT)
+    c.roundRect(meta_box_x, meta_box_y, 5, meta_box_h, 3, fill=1, stroke=0)
+
+    meta_items = [
+        ("Prepared for", name),
+        ("Date",         date),
+        ("Prepared by",  "SimplifiIQ Research Engine"),
     ]
+    for i, (label, value) in enumerate(meta_items):
+        iy = meta_box_y + meta_box_h - 1.05*cm - i * 1.0*cm
+        # Label — light grey, small caps feel
+        c.setFillColor(colors.HexColor("#7BAFD4"))
+        c.setFont("Helvetica", 7.5)
+        c.drawString(meta_box_x + 0.7*cm, iy + 0.22*cm, label.upper())
+        # Value — pure white, bold, clearly readable
+        c.setFillColor(WHITE)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(meta_box_x + 0.7*cm, iy - 0.22*cm, value)
 
-    cover_tbl = Table(cover_rows, colWidths=[W - 4*cm])
-    cover_tbl.setStyle(TableStyle([
-        ("BACKGROUND",    (0, 0), (-1, -1), NAVY),
-        ("TOPPADDING",    (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 42),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 30),
-    ]))
-    story.append(cover_tbl)
-    story.append(PageBreak())
+    # ── 5. BOTTOM FOOTER BAR ──────────────────────────────────────────────────
+    c.setFillColor(BLUE)
+    c.rect(0, 0, W, 1.8*cm, fill=1, stroke=0)
+
+    c.setFillColor(WHITE)
+    c.setFont("Helvetica", 8.5)
+    c.drawString(1.8*cm, 0.68*cm, "Confidential  |  Generated by SimplifiIQ Research Engine")
+
+    c.setFont("Helvetica-Bold", 8.5)
+    c.drawRightString(W - 1.4*cm, 0.68*cm, "simplifiiq.com")
+
+    c.showPage()
 
 
 # ── Section Header ──────────────────────────────────────────────────────────────
@@ -164,7 +252,6 @@ def build_company_overview(story, lead, enriched, S):
     website   = enriched.get("website") or lead.get("website") or "Not provided"
     industry  = enriched.get("industry") or lead.get("industry") or "General"
 
-    # Info table — 2 columns, clean grid
     rows = [
         [Paragraph("Company Name",  S["small_bold"]), Paragraph(lead["company"], S["body"])],
         [Paragraph("Industry",      S["small_bold"]), Paragraph(industry,         S["body"])],
@@ -179,7 +266,6 @@ def build_company_overview(story, lead, enriched, S):
     tbl = Table(rows, colWidths=[4*cm, W - 4*cm - 4*cm])
     tbl.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (0, -1), LIGHT),
-        ("BACKGROUND",    (1, 0), (1, -1), WHITE),
         ("ROWBACKGROUNDS",(1, 0), (1, -1), [WHITE, SILVER]),
         ("LEFTPADDING",   (0, 0), (-1, -1), 10),
         ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
@@ -222,9 +308,9 @@ def build_company_overview(story, lead, enriched, S):
 def build_digital_presence(story, lead, enriched, S):
     section_header(story, "02", "Digital Presence Analysis", S)
 
-    social       = enriched.get("social_links", {})
-    linkedin_info= enriched.get("linkedin", {})
-    website      = enriched.get("website") or lead.get("website", "")
+    social        = enriched.get("social_links", {})
+    linkedin_info = enriched.get("linkedin", {})
+    website       = enriched.get("website") or lead.get("website", "")
 
     has_website  = bool(website)
     has_linkedin = bool(social.get("linkedin") or linkedin_info.get("linkedin_url"))
@@ -234,33 +320,30 @@ def build_digital_presence(story, lead, enriched, S):
     score_pct    = f"{score * 25}%"
     score_color  = GREEN if score >= 3 else (ORANGE if score >= 2 else RED)
 
-    def metric_cell(label, val, val_color):
-        return Table([[
-            Paragraph(label, ParagraphStyle("ml", fontName="Helvetica-Bold", fontSize=7,
-                      textColor=colors.HexColor("#94A3B8"), leading=10)),
-            Paragraph(val, ParagraphStyle("mv", fontName="Helvetica-Bold", fontSize=18,
-                      textColor=WHITE, leading=22, alignment=TA_CENTER)),
-        ]], colWidths=[None], rowHeights=[52])
-
     def score_card(label, val, color):
-        t = Table([[Paragraph(label, ParagraphStyle("sl", fontName="Helvetica-Bold",
-                   fontSize=7.5, textColor=colors.HexColor("#CBD5E1"), leading=10)),
-                   Paragraph(val, ParagraphStyle("sv", fontName="Helvetica-Bold",
-                   fontSize=20, textColor=WHITE, leading=24))]],
-                  colWidths=[None], rowHeights=[56])
+        t = Table(
+            [[Paragraph(label, ParagraphStyle("sl", fontName="Helvetica-Bold",
+               fontSize=7.5, textColor=colors.HexColor("#CBD5E1"), leading=10))],
+             [Paragraph(val, ParagraphStyle("sv", fontName="Helvetica-Bold",
+               fontSize=20, textColor=WHITE, leading=24, alignment=TA_CENTER))]],
+            colWidths=[(W - 4*cm)/4 - 6]
+        )
         t.setStyle(TableStyle([
             ("BACKGROUND",    (0, 0), (-1, -1), color),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 14),
-            ("TOPPADDING",    (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+            ("TOPPADDING",    (0, 0), (0, 0), 10),
+            ("TOPPADDING",    (0, 1), (0, 1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
         ]))
         return t
 
     cards = Table([[
         score_card("DIGITAL SCORE", score_pct, score_color),
-        score_card("WEBSITE",  "✓" if has_website  else "✗", GREEN if has_website  else RED),
-        score_card("LINKEDIN", "✓" if has_linkedin else "✗", GREEN if has_linkedin else RED),
-        score_card("SOCIAL",   "✓" if (has_twitter or has_facebook) else "✗",
+        score_card("WEBSITE",  "Yes" if has_website  else "No", GREEN if has_website  else RED),
+        score_card("LINKEDIN", "Yes" if has_linkedin else "No", GREEN if has_linkedin else RED),
+        score_card("SOCIAL",   "Yes" if (has_twitter or has_facebook) else "No",
                    GREEN if (has_twitter or has_facebook) else RED),
     ]], colWidths=[(W - 4*cm)/4]*4)
     cards.setStyle(TableStyle([
@@ -275,26 +358,30 @@ def build_digital_presence(story, lead, enriched, S):
     story.append(Paragraph("Key Findings:", S["h3"]))
     findings = []
     if has_website:
-        findings.append(f"✓ Company website identified: {website}")
+        findings.append((True,  f"Company website identified: {website}"))
     else:
-        findings.append("✗ No verified company website found — a significant gap in digital credibility.")
+        findings.append((False, "No verified company website found — a significant gap in digital credibility."))
     if has_linkedin:
-        findings.append(f"✓ LinkedIn presence confirmed.")
+        findings.append((True,  "LinkedIn presence confirmed."))
     else:
-        findings.append("✗ No LinkedIn Company Page detected — critical for B2B trust and talent acquisition.")
+        findings.append((False, "No LinkedIn Company Page detected — critical for B2B trust and talent acquisition."))
     if not has_twitter:
-        findings.append("✗ No active Twitter/X presence — a missed channel for brand awareness.")
+        findings.append((False, "No active Twitter/X presence — a missed channel for brand awareness."))
     if not has_facebook:
-        findings.append("✗ Facebook presence not detected.")
+        findings.append((False, "Facebook presence not detected."))
 
-    for f in findings:
-        color = TEXT if "✓" in f else colors.HexColor("#DC2626")
-        story.append(Paragraph(f"  {f}", ParagraphStyle("fi", fontName="Helvetica",
-                     fontSize=9.5, textColor=color, leading=15, spaceAfter=4)))
+    for ok, text in findings:
+        mark  = "+" if ok else "-"
+        color = GREEN if ok else colors.HexColor("#DC2626")
+        story.append(Paragraph(
+            f"  [{mark}]  {text}",
+            ParagraphStyle("fi", fontName="Helvetica", fontSize=9.5,
+                           textColor=color, leading=15, spaceAfter=4)
+        ))
 
     story.append(Spacer(1, 8))
     rec = Table([[Paragraph(
-        "💡 Recommendation: A unified digital presence strategy — SEO-optimised web content, "
+        "Recommendation: A unified digital presence strategy — SEO-optimised web content, "
         "regular LinkedIn publishing, and consistent social engagement — can dramatically improve "
         "inbound lead quality and brand authority in your sector.",
         S["body"])]],
@@ -305,7 +392,7 @@ def build_digital_presence(story, lead, enriched, S):
         ("RIGHTPADDING",  (0, 0), (-1, -1), 14),
         ("TOPPADDING",    (0, 0), (-1, -1), 10),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-        ("LINERIGHT",     (0, 0), (0, -1), 3, ACCENT),
+        ("LINEBEFORE",    (0, 0), (0, -1), 3, ACCENT),
     ]))
     story.append(rec)
     story.append(Spacer(1, 16))
@@ -327,9 +414,9 @@ def build_industry_insights(story, lead, enriched, S):
     story.append(Spacer(1, 10))
 
     cards = [
-        ("📈 Market Trend",       insights.get("trend", ""), BLUE),
-        ("⚠️  Common Pain Point", insights.get("pain", ""), ORANGE),
-        ("🚀 Key Opportunity",    insights.get("opp",  ""), GREEN),
+        ("Market Trend",       insights.get("trend", ""), BLUE),
+        ("Common Pain Point",  insights.get("pain", ""), ORANGE),
+        ("Key Opportunity",    insights.get("opp",  ""), GREEN),
     ]
 
     for label, text, color in cards:
@@ -366,7 +453,7 @@ def build_news_section(story, lead, enriched, S):
     ))
     story.append(Spacer(1, 6))
     for h in headlines:
-        story.append(Paragraph(f"📰  {h}", S["bullet"]))
+        story.append(Paragraph(f"  {h}", S["bullet"]))
     story.append(Spacer(1, 16))
 
 
@@ -412,86 +499,102 @@ def build_automation_opportunities(story, lead, enriched, S):
     if pain_points:
         opportunities.insert(0, (
             "Your Identified Pain Point",
-            f"You mentioned: \"{pain_points[:180]}\". SimplifiIQ has targeted solutions addressing this specific challenge.",
+            f"You mentioned: \"{pain_points[:180]}\". SimplifiIQ has targeted solutions "
+            "addressing this specific challenge.",
             "CRITICAL", RED
         ))
 
+    col_w = [4.5*cm, W - 4*cm - 4.5*cm - 2.2*cm, 2.2*cm]
+
     # Header row
-    header = Table([[
+    header_data = [[
         Paragraph("AREA", S["table_header"]),
         Paragraph("OPPORTUNITY DESCRIPTION", S["table_header"]),
         Paragraph("PRIORITY", S["table_header"]),
-    ]], colWidths=[4.5*cm, 10*cm, 2*cm])
+    ]]
+    header = Table(header_data, colWidths=col_w)
     header.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, -1), NAVY),
         ("LEFTPADDING",   (0, 0), (-1, -1), 10),
         ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
         ("TOPPADDING",    (0, 0), (-1, -1), 9),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
     ]))
     story.append(header)
 
-    # Data rows
+    # All data rows in a single table for proper alignment
+    data_rows = []
+    row_styles = [
+        ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+        ("TOPPADDING",    (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("GRID",          (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+    ]
+
     for i, (area, desc, level, color) in enumerate(opportunities):
         bg = WHITE if i % 2 == 0 else SILVER
-        row = Table([[
+        row_styles.append(("BACKGROUND", (0, i), (-1, i), bg))
+        row_styles.append(("TEXTCOLOR",  (2, i), (2, i), color))
+        data_rows.append([
             Paragraph(area, S["table_cell_bold"]),
             Paragraph(desc, S["table_cell"]),
-            Paragraph(level, ParagraphStyle("pr", fontName="Helvetica-Bold", fontSize=7.5,
-                      textColor=color, leading=11, alignment=TA_CENTER)),
-        ]], colWidths=[4.5*cm, 10*cm, 2*cm])
-        row.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, -1), bg),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
-            ("TOPPADDING",    (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-            ("GRID",          (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
-            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-            ("LINERIGHT",     (2, 0), (2, 0), 0, WHITE),
-        ]))
-        story.append(row)
+            Paragraph(level, ParagraphStyle(
+                "pr", fontName="Helvetica-Bold", fontSize=7.5,
+                textColor=color, leading=11, alignment=TA_CENTER
+            )),
+        ])
 
+    data_tbl = Table(data_rows, colWidths=col_w)
+    data_tbl.setStyle(TableStyle(row_styles))
+    story.append(data_tbl)
     story.append(Spacer(1, 16))
 
 
-# ── 06. Recommendations ─────────────────────────────────────────────────────────
+# ── 06. Recommendations — single flat table, no nesting ───────────────────────
 def build_recommendations(story, lead, enriched, S):
     section_header(story, "06", "Our Recommendations", S)
 
     company = lead["company"]
     recs = [
-        ("Immediate",          "🔍", ACCENT,
+        ("Immediate",  ACCENT,
          "Conduct an internal process audit to identify the top 3 workflows consuming the most "
          "manual effort. These are your highest-ROI automation targets."),
-        ("30 Days",            "⚡", BLUE,
+        ("30 Days",    BLUE,
          f"Deploy a lead intake automation system similar to this report pipeline for {company}. "
          "Personalised first interactions significantly improve conversion rates."),
-        ("90 Days",            "🔗", GREEN,
+        ("90 Days",    GREEN,
          "Integrate an AI-powered data enrichment layer into your CRM to keep prospect and "
          "client profiles up-to-date automatically."),
-        ("Strategic",          "🗺️", ORANGE,
+        ("Strategic",  ORANGE,
          "Develop an AI adoption roadmap aligned to your 12-month growth goals. SimplifiIQ "
          "can support this journey from strategy through to full deployment."),
     ]
 
-    for horizon, icon, color, text in recs:
-        row = Table([[
-            Table([[Paragraph(icon, ParagraphStyle("icon", fontName="Helvetica-Bold",
-                    fontSize=14, textColor=WHITE, leading=18, alignment=TA_CENTER)),
-                    Paragraph(horizon, ParagraphStyle("hz", fontName="Helvetica-Bold",
-                    fontSize=8, textColor=colors.HexColor("#CBD5E1"), leading=11,
-                    alignment=TA_CENTER))]],
-                   colWidths=[2*cm]),
+    label_w   = 2.6*cm
+    content_w = W - 4*cm - label_w
+
+    for horizon, color, text in recs:
+        row_data = [[
+            Paragraph(
+                f"<b>{horizon}</b>",
+                ParagraphStyle("hz", fontName="Helvetica-Bold", fontSize=9,
+                               textColor=WHITE, leading=13, alignment=TA_CENTER)
+            ),
             Paragraph(text, S["body_white"]),
-        ]], colWidths=[2.2*cm, W - 4*cm - 2.2*cm])
+        ]]
+        row = Table(row_data, colWidths=[label_w, content_w])
         row.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, -1), NAVY),
-            ("BACKGROUND",    (0, 0), (0, -1), color),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 12),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 12),
-            ("TOPPADDING",    (0, 0), (-1, -1), 12),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+            ("BACKGROUND",    (0, 0), (0, 0), color),
+            ("BACKGROUND",    (1, 0), (1, 0), NAVY),
+            ("LEFTPADDING",   (0, 0), (0, 0), 8),
+            ("RIGHTPADDING",  (0, 0), (0, 0), 8),
+            ("TOPPADDING",    (0, 0), (-1, -1), 14),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+            ("LEFTPADDING",   (1, 0), (1, 0), 14),
+            ("RIGHTPADDING",  (1, 0), (1, 0), 14),
             ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
         ]))
         story.append(row)
@@ -518,19 +621,27 @@ def build_next_steps(story, lead, S):
         ("4", "Begin a pilot project with zero upfront commitment.", ORANGE),
     ]
 
+    num_w     = 1.4*cm
+    content_w = W - 4*cm - num_w
+
     for num, text, color in steps:
-        row = Table([[
-            Paragraph(num, ParagraphStyle("n", fontName="Helvetica-Bold", fontSize=18,
-                      textColor=WHITE, leading=22, alignment=TA_CENTER)),
+        row_data = [[
+            Paragraph(num, ParagraphStyle(
+                "n", fontName="Helvetica-Bold", fontSize=18,
+                textColor=WHITE, leading=22, alignment=TA_CENTER
+            )),
             Paragraph(text, S["body_white"]),
-        ]], colWidths=[1.4*cm, W - 4*cm - 1.4*cm])
+        ]]
+        row = Table(row_data, colWidths=[num_w, content_w])
         row.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, -1), NAVY),
-            ("BACKGROUND",    (0, 0), (0, -1), color),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 12),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 14),
+            ("BACKGROUND",    (0, 0), (0, 0), color),
+            ("BACKGROUND",    (1, 0), (1, 0), NAVY),
             ("TOPPADDING",    (0, 0), (-1, -1), 12),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+            ("LEFTPADDING",   (0, 0), (0, 0), 6),
+            ("RIGHTPADDING",  (0, 0), (0, 0), 6),
+            ("LEFTPADDING",   (1, 0), (1, 0), 14),
+            ("RIGHTPADDING",  (1, 0), (1, 0), 14),
             ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
         ]))
         story.append(row)
@@ -540,10 +651,10 @@ def build_next_steps(story, lead, S):
 
     # Contact footer
     footer = Table([[
-        Paragraph("📧 career@simplifiiq.com", S["center_white"]),
+        Paragraph("career@simplifiiq.com", S["center_white"]),
         Paragraph("|", ParagraphStyle("div", fontName="Helvetica", fontSize=14,
                   textColor=ACCENT, leading=18, alignment=TA_CENTER)),
-        Paragraph("🌐 simplifiiq.com", S["center_white"]),
+        Paragraph("simplifiiq.com", S["center_white"]),
     ]], colWidths=[(W - 4*cm)/3]*3)
     footer.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, -1), BLUE),
@@ -556,7 +667,7 @@ def build_next_steps(story, lead, S):
     story.append(footer)
 
 
-# ── Page Header/Footer ──────────────────────────────────────────────────────────
+# ── Page Header/Footer (pages 2+) ───────────────────────────────────────────────
 def on_page(canvas, doc, company):
     canvas.saveState()
     if doc.page > 1:
@@ -589,8 +700,21 @@ def generate_pdf_report(lead: dict, enriched: dict, output_path: str):
     company = lead["company"]
     S = styles()
 
+    # ── Step 1: draw cover page via raw canvas ─────────────────────────────────
+    import io
+    from reportlab.pdfgen import canvas as rl_canvas
+    from pypdf import PdfWriter, PdfReader
+
+    cover_buf = io.BytesIO()
+    c = rl_canvas.Canvas(cover_buf, pagesize=A4)
+    draw_cover(c, lead, enriched)
+    c.save()
+    cover_buf.seek(0)
+
+    # ── Step 2: build inner pages via platypus ─────────────────────────────────
+    inner_buf = io.BytesIO()
     doc = SimpleDocTemplate(
-        output_path,
+        inner_buf,
         pagesize=A4,
         leftMargin=2*cm,
         rightMargin=2*cm,
@@ -602,7 +726,6 @@ def generate_pdf_report(lead: dict, enriched: dict, output_path: str):
     )
 
     story = []
-    build_cover(story, lead, enriched, S)
     build_company_overview(story, lead, enriched, S)
     build_digital_presence(story, lead, enriched, S)
     build_industry_insights(story, lead, enriched, S)
@@ -613,7 +736,60 @@ def generate_pdf_report(lead: dict, enriched: dict, output_path: str):
 
     doc.build(
         story,
-        onFirstPage=lambda c, d: on_page(c, d, company),
-        onLaterPages=lambda c, d: on_page(c, d, company),
+        onFirstPage=lambda cv, d: on_page(cv, d, company),
+        onLaterPages=lambda cv, d: on_page(cv, d, company),
     )
-    logger.info(f"📄 PDF saved: {output_path}")
+    inner_buf.seek(0)
+
+    # ── Step 3: merge cover + inner pages ─────────────────────────────────────
+    writer  = PdfWriter()
+    cover_r = PdfReader(cover_buf)
+    inner_r = PdfReader(inner_buf)
+
+    for page in cover_r.pages:
+        writer.add_page(page)
+    for page in inner_r.pages:
+        writer.add_page(page)
+
+    with open(output_path, "wb") as f:
+        writer.write(f)
+
+    logger.info(f"PDF saved: {output_path}")
+
+
+# ── Quick test ──────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+
+    sample_lead = {
+        "company":    "SimplifiIQ",
+        "name":       "Kalyan Dakkili",
+        "email":      "kalyandakkili77@gmail.com",
+        "website":    "https://simplifiiq.com",
+        "industry":   "Consulting",
+        "team_size":  "11-50",
+        "pain_points": "",
+    }
+
+    sample_enriched = {
+        "industry":    "Consulting",
+        "website":     "https://simplifiiq.com",
+        "description": (
+            "SimplifiIQ is an AI-powered business intelligence and automation consultancy "
+            "helping companies streamline operations, improve lead quality, and scale through "
+            "intelligent workflow design and data-driven insights."
+        ),
+        "social_links": {"linkedin": "", "twitter": "", "facebook": ""},
+        "linkedin":     {},
+        "news_headlines": [],
+        "industry_insights": {
+            "trend": "Data-backed consulting and AI-augmented research are differentiating top firms.",
+            "pain":  "Proposal generation and client reporting are highly manual and time-consuming.",
+            "opp":   "Automating report generation can free consultants for high-value advisory work.",
+        },
+        "site_data": {"tagline": "", "paragraphs": []},
+    }
+
+    out = "/mnt/user-data/outputs/SimplifiIQ_Audit_Report_Fixed.pdf"
+    generate_pdf_report(sample_lead, sample_enriched, out)
+    print(f"Report written to: {out}")
