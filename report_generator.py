@@ -700,21 +700,26 @@ def generate_pdf_report(lead: dict, enriched: dict, output_path: str):
     company = lead["company"]
     S = styles()
 
-    # ── Step 1: draw cover page via raw canvas ─────────────────────────────────
-    import io
-    from reportlab.pdfgen import canvas as rl_canvas
-    from pypdf import PdfWriter, PdfReader
+    def on_first_page(cv, doc):
+        # Page 1 = full-bleed cover drawn via raw canvas; Platypus renders nothing here
+        draw_cover(cv, lead, enriched)
 
-    cover_buf = io.BytesIO()
-    c = rl_canvas.Canvas(cover_buf, pagesize=A4)
-    draw_cover(c, lead, enriched)
-    c.save()
-    cover_buf.seek(0)
+    def on_later_pages(cv, doc):
+        on_page(cv, doc, company)
 
-    # ── Step 2: build inner pages via platypus ─────────────────────────────────
-    inner_buf = io.BytesIO()
+    # PageBreak as first element makes Platypus flush page 1 immediately to
+    # on_first_page (cover), then inner content flows from page 2 onward.
+    story = [PageBreak()]
+    build_company_overview(story, lead, enriched, S)
+    build_digital_presence(story, lead, enriched, S)
+    build_industry_insights(story, lead, enriched, S)
+    build_news_section(story, lead, enriched, S)
+    build_automation_opportunities(story, lead, enriched, S)
+    build_recommendations(story, lead, enriched, S)
+    build_next_steps(story, lead, S)
+
     doc = SimpleDocTemplate(
-        inner_buf,
+        output_path,
         pagesize=A4,
         leftMargin=2*cm,
         rightMargin=2*cm,
@@ -725,37 +730,8 @@ def generate_pdf_report(lead: dict, enriched: dict, output_path: str):
         subject="AI Automation Opportunity Assessment",
     )
 
-    story = []
-    build_company_overview(story, lead, enriched, S)
-    build_digital_presence(story, lead, enriched, S)
-    build_industry_insights(story, lead, enriched, S)
-    build_news_section(story, lead, enriched, S)
-    build_automation_opportunities(story, lead, enriched, S)
-    build_recommendations(story, lead, enriched, S)
-    build_next_steps(story, lead, S)
-
-    doc.build(
-        story,
-        onFirstPage=lambda cv, d: on_page(cv, d, company),
-        onLaterPages=lambda cv, d: on_page(cv, d, company),
-    )
-    inner_buf.seek(0)
-
-    # ── Step 3: merge cover + inner pages ─────────────────────────────────────
-    writer  = PdfWriter()
-    cover_r = PdfReader(cover_buf)
-    inner_r = PdfReader(inner_buf)
-
-    for page in cover_r.pages:
-        writer.add_page(page)
-    for page in inner_r.pages:
-        writer.add_page(page)
-
-    with open(output_path, "wb") as f:
-        writer.write(f)
-
+    doc.build(story, onFirstPage=on_first_page, onLaterPages=on_later_pages)
     logger.info(f"PDF saved: {output_path}")
-
 
 # ── Quick test ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
